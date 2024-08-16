@@ -65,9 +65,93 @@ void UpdateSupervisorPrivileges()
 	writeRFlags(rflags);
 }
 
-void* CreateGDT()
+void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSelector* tr, uint64 pl)
 {
-	return nullptr;
+	readGDTR(gdtr);
+	OldGDTR = *gdtr;
+
+	if (!gdtr->base)
+	{
+		DbgPrint("Failed to find GDT base\n");
+		return nullptr;
+	}
+
+	SegmentDescriptor32* gdt = reinterpret_cast<SegmentDescriptor32*>
+		(AllocateContiguousMemory(PAGE_SIZE, PAGE_READWRITE));
+
+	if (!gdt)
+	{
+		DbgPrint("Failed to allocate new GDT\n");
+		return nullptr;
+	}
+
+	memcpy(gdt, reinterpret_cast<void*>(gdtr->base), static_cast<size_t>(gdtr->limit) + 1);
+
+	constexpr uint16 newEntriesSize = (sizeof(SegmentDescriptor32) * 2 + sizeof(SegmentDescriptor64));
+
+	if ((gdtr->limit + newEntriesSize) > MAX_GDT_LIMIT)
+		gdtr->limit = MAX_GDT_LIMIT;
+	else
+		gdtr->limit += newEntriesSize;
+
+	uint64 idx = (static_cast<uint64>(gdtr->limit) + 1) / sizeof(SegmentDescriptor32);
+
+	*cs = OldCS = readCS();
+	SegmentDescriptor32* csEntry = &gdt[--idx];
+	if (csEntry->all)
+	{
+		/*
+			I'm too lazy, but the fix is simple:
+			Just search the whole GDT for empty entries.
+		*/
+		FreeContiguousMemory(gdt);
+		DbgPrint("CS entry is already initialized\n");
+		return nullptr;
+	}
+
+	*csEntry = gdt[cs->index];
+
+	csEntry->type = CODE_DATA_TYPE_EXECUTE_CONFORMING_READ; /* The conforming flag may be unnecessary */
+	csEntry->dpl = pl;
+	cs->index = idx;
+	cs->rpl = pl;
+
+	*ss = OldSS = readSS();
+	SegmentDescriptor32* ssEntry = &gdt[--idx];
+	if (ssEntry->all)
+	{
+		FreeContiguousMemory(gdt);
+		DbgPrint("SS entry is already initialized\n");
+		return nullptr;
+	}
+
+	*ssEntry = gdt[ss->index];
+
+	ssEntry->type = CODE_DATA_TYPE_WRITE;
+	ssEntry->dpl = pl;
+	ss->index = idx;
+	ss->rpl = pl;
+
+	*tr = OldTR = readTR();
+	idx -= 2;
+	SegmentDescriptor64* trEntry = reinterpret_cast<SegmentDescriptor64*>(&gdt[idx]);
+	if (trEntry->all[0] || trEntry->all[1])
+	{
+		FreeContiguousMemory(gdt);
+		DbgPrint("TR entry is already initialized\n");
+		return nullptr;
+	}
+
+	*trEntry = *reinterpret_cast<SegmentDescriptor64*>(&gdt[tr->index]);
+
+	trEntry->desc.type = SYSTEM_TYPE_NOT_BUSY;
+	trEntry->desc.dpl = pl;
+	tr->index = idx;
+	tr->rpl = pl;
+
+	gdtr->base = reinterpret_cast<uint64>(gdt);
+
+	return gdt;
 }
 
 void* CreateIDT()
@@ -187,21 +271,20 @@ NTSTATUS Startup(void* context)
 
 	memcpy(entry, shellcode, sizeof(shellcode));
 
+	SegmentSelector cs{ 0 };
+	SegmentSelector ss{ 0 };
+	SegmentSelector tr{ 0 };
+
 	GDTR gdtr{ 0 };
-	readGDTR(&gdtr);
-	OldGDTR = gdtr;
-
-	SegmentDescriptor32* gdt = reinterpret_cast<SegmentDescriptor32*>
-		(AllocateContiguousMemory(PAGE_SIZE, PAGE_READWRITE));
-
-	if (!gdt || !gdtr.base)
+	void* gdt = CreateGDT(&gdtr, &cs, &ss, &tr, 1);
+	if (!gdt)
 	{
 		FreeContiguousMemory(entry);
 		FreeContiguousMemory(pt);
 		FreeContiguousMemory(pd);
 		FreeContiguousMemory(pdpt);
 		FreeContiguousMemory(pml4);
-		DbgPrint("Failed to find GDT base\n");
+		DbgPrint("Failed to create GDT\n");
 		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
 	}
 
@@ -221,11 +304,11 @@ NTSTATUS Startup(void* context)
 		FreeContiguousMemory(pd);
 		FreeContiguousMemory(pdpt);
 		FreeContiguousMemory(pml4);
-		DbgPrint("Failed to find GDT base\n");
+		DbgPrint("Failed to do IDT stuff\n");
 		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
 	}
 
-	memcpy(gdt, reinterpret_cast<void*>(gdtr.base), static_cast<size_t>(gdtr.limit) + 1);
+	
 	memcpy(idt, reinterpret_cast<void*>(idtr.base), static_cast<size_t>(idtr.limit) + 1);
 
 	idt[INTERRUPT_VECTOR_GP].baseLow = (reinterpret_cast<uint64>(GPHandler) & MAXUINT16);
@@ -238,43 +321,11 @@ NTSTATUS Startup(void* context)
 
 	idtr.base = reinterpret_cast<uint64>(idt);
 
-	/*
-		Don't use ending idx like this because it could be something else
-		Just make sure that our entries don't collide with existing cs, ss, or tr descriptors
-	*/
-	idx = (static_cast<uint64>(gdtr.limit) + 1) / sizeof(SegmentDescriptor32);
 
-	SegmentSelector cs = OldCS = readCS();
-	SegmentDescriptor32* csEntry = &gdt[idx];
-	*csEntry = gdt[cs.index];
-
-	csEntry->type = CODE_DATA_TYPE_EXECUTE_CONFORMING_READ; /* The conforming flag may be unnecessary */
-	csEntry->dpl = 1;
-	cs.index = idx++;
-	cs.rpl = 1;
-
-	SegmentSelector ss = OldSS = readSS();
-	SegmentDescriptor32* ssEntry = &gdt[idx];
-	*ssEntry = gdt[ss.index];
-
-	ssEntry->type = CODE_DATA_TYPE_WRITE;
-	ssEntry->dpl = 1;
-	ss.index = idx++;
-	ss.rpl = 1;
 
 	_disable();
 
-	SegmentSelector tr = OldTR = readTR();
-	SegmentDescriptor64* trEntry = reinterpret_cast<SegmentDescriptor64*>(&gdt[idx]);
-	*trEntry = *reinterpret_cast<SegmentDescriptor64*>(&gdt[tr.index]);
 
-	trEntry->desc.type = SYSTEM_TYPE_NOT_BUSY;
-	trEntry->desc.dpl = 1;
-	tr.index = idx++;
-	tr.rpl = 1;
-
-	gdtr.base = reinterpret_cast<uint64>(gdt);
-	gdtr.limit += (sizeof(SegmentDescriptor32) * 2 + sizeof(SegmentDescriptor64));
 
 	__writecr3(cr3.all);
 

@@ -154,9 +154,38 @@ void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSel
 	return gdt;
 }
 
-void* CreateIDT()
+void* CreateIDT(IDTR* idtr)
 {
-	return nullptr;
+	__sidt(idtr);
+
+	if (!idtr->base)
+	{
+		DbgPrint("Failed to find IDT base\n");
+		return nullptr;
+	}
+
+	IDTEntry* idt = reinterpret_cast<IDTEntry*>(
+		AllocateContiguousMemory(PAGE_SIZE, PAGE_READWRITE));
+	
+	if (!idt)
+	{
+		DbgPrint("Failed to allocate new IDT\n");
+		return nullptr;
+	}
+
+	memcpy(idt, reinterpret_cast<void*>(idtr->base), static_cast<size_t>(idtr->limit) + 1);
+
+	idt[INTERRUPT_VECTOR_GP].baseLow = (reinterpret_cast<uint64>(GPHandler) & MAXUINT16);
+	idt[INTERRUPT_VECTOR_GP].baseMiddle = ((reinterpret_cast<uint64>(GPHandler) >> 16) & MAXUINT16);
+	idt[INTERRUPT_VECTOR_GP].baseHigh = ((reinterpret_cast<uint64>(GPHandler) >> 32) & MAXUINT32);
+
+	idt[INTERRUPT_VECTOR_PF].baseLow = (reinterpret_cast<uint64>(PFHandler) & MAXUINT16);
+	idt[INTERRUPT_VECTOR_PF].baseMiddle = ((reinterpret_cast<uint64>(PFHandler) >> 16) & MAXUINT16);
+	idt[INTERRUPT_VECTOR_PF].baseHigh = ((reinterpret_cast<uint64>(PFHandler) >> 32) & MAXUINT32);
+
+	idtr->base = reinterpret_cast<uint64>(idt);
+
+	return idt;
 }
 
 NTSTATUS Startup(void* context)
@@ -288,15 +317,12 @@ NTSTATUS Startup(void* context)
 		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
 	}
 
-	IDTEntry* idt = reinterpret_cast<IDTEntry*>(
-		AllocateContiguousMemory(PAGE_SIZE, PAGE_READWRITE));
+	IDTR oldIDTR{ 0 };
+	__sidt(&oldIDTR);
 
 	IDTR idtr{ 0 };
-	__sidt(&idtr);
-
-	IDTR oldIDTR{ idtr };
-
-	if (!idt || !idtr.base)
+	void* idt = CreateIDT(&idtr);
+	if (!idt)
 	{
 		FreeContiguousMemory(gdt);
 		FreeContiguousMemory(entry);
@@ -308,24 +334,7 @@ NTSTATUS Startup(void* context)
 		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
 	}
 
-	
-	memcpy(idt, reinterpret_cast<void*>(idtr.base), static_cast<size_t>(idtr.limit) + 1);
-
-	idt[INTERRUPT_VECTOR_GP].baseLow = (reinterpret_cast<uint64>(GPHandler) & MAXUINT16);
-	idt[INTERRUPT_VECTOR_GP].baseMiddle = ((reinterpret_cast<uint64>(GPHandler) >> 16) & MAXUINT16);
-	idt[INTERRUPT_VECTOR_GP].baseHigh = ((reinterpret_cast<uint64>(GPHandler) >> 32) & MAXUINT32);
-
-	idt[INTERRUPT_VECTOR_PF].baseLow = (reinterpret_cast<uint64>(PFHandler) & MAXUINT16);
-	idt[INTERRUPT_VECTOR_PF].baseMiddle = ((reinterpret_cast<uint64>(PFHandler) >> 16) & MAXUINT16);
-	idt[INTERRUPT_VECTOR_PF].baseHigh = ((reinterpret_cast<uint64>(PFHandler) >> 32) & MAXUINT32);
-
-	idtr.base = reinterpret_cast<uint64>(idt);
-
-
-
 	_disable();
-
-
 
 	__writecr3(cr3.all);
 

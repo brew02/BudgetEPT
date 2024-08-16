@@ -188,6 +188,61 @@ void* CreateIDT(IDTR* idtr)
 	return idt;
 }
 
+uint64 RunBudgetEPTTest(CR3* cr3, void* shellAddress, uint64 pl)
+{
+	CR3 oldCR3{ __readcr3() };
+
+	SegmentSelector cs{ 0 };
+	SegmentSelector ss{ 0 };
+	SegmentSelector tr{ 0 };
+
+	GDTR gdtr{ 0 };
+	void* gdt = CreateGDT(&gdtr, &cs, &ss, &tr, pl);
+	if (!gdt)
+	{
+		DbgPrint("Failed to create GDT\n");
+		return 0;
+	}
+
+	IDTR oldIDTR{ 0 };
+	__sidt(&oldIDTR);
+
+	IDTR idtr{ 0 };
+	void* idt = CreateIDT(&idtr);
+	if (!idt)
+	{
+		FreeContiguousMemory(gdt);
+		DbgPrint("Failed to create IDT\n");
+		return 0;
+	}
+
+	_disable();
+
+	__writecr3(cr3->all);
+
+	FlushCaches(shellAddress);
+	UpdateSupervisorPrivileges();
+	writeGDTR(&gdtr);
+
+	__lidt(&idtr);
+
+	uint64 result = BudgetEPTTest(cs, ss, tr, shellAddress);
+
+	__lidt(&oldIDTR);
+
+	UpdateSupervisorPrivileges();
+
+	__writecr3(oldCR3.all);
+	FlushCaches(shellAddress);
+
+	_enable();
+
+	FreeContiguousMemory(idt);
+	FreeContiguousMemory(gdt);
+
+	return result;
+}
+
 NTSTATUS Startup(void* context)
 {
 	UNREFERENCED_PARAMETER(context);
@@ -292,73 +347,26 @@ NTSTATUS Startup(void* context)
 
 	/*
 		mov eax, 0xdeadbeef
-		mov rax, cr3			; Should cause #GP
-		mov rax, [rip]			; Should cause #PF
+		mov rcx, cr3
+		mov rax, [rip]
 		ret
 	*/
-	uint8 shellcode[] = { 0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 0x0F, 0x20, 0xD8, 0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 0xC3 };
+	uint8 shellcode[] = { 0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 0x0F, 0x20, 0xD9, 0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 0xC3 };
 
 	memcpy(entry, shellcode, sizeof(shellcode));
 
-	SegmentSelector cs{ 0 };
-	SegmentSelector ss{ 0 };
-	SegmentSelector tr{ 0 };
+	uint64 result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 0);
+	if (result == 0xdeadbeefdade)
+		DbgPrint("Budget EPT Test 1 Passed: 0x%llx\n", result);
+	else
+		DbgPrint("Budget EPT Test 1 Failed: 0x%llx\n", result);
 
-	GDTR gdtr{ 0 };
-	void* gdt = CreateGDT(&gdtr, &cs, &ss, &tr, 1);
-	if (!gdt)
-	{
-		FreeContiguousMemory(entry);
-		FreeContiguousMemory(pt);
-		FreeContiguousMemory(pd);
-		FreeContiguousMemory(pdpt);
-		FreeContiguousMemory(pml4);
-		DbgPrint("Failed to create GDT\n");
-		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
-	}
-
-	IDTR oldIDTR{ 0 };
-	__sidt(&oldIDTR);
-
-	IDTR idtr{ 0 };
-	void* idt = CreateIDT(&idtr);
-	if (!idt)
-	{
-		FreeContiguousMemory(gdt);
-		FreeContiguousMemory(entry);
-		FreeContiguousMemory(pt);
-		FreeContiguousMemory(pd);
-		FreeContiguousMemory(pdpt);
-		FreeContiguousMemory(pml4);
-		DbgPrint("Failed to do IDT stuff\n");
-		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
-	}
-
-	_disable();
-
-	__writecr3(cr3.all);
-
-	FlushCaches(reinterpret_cast<void*>(virt.all));
-	UpdateSupervisorPrivileges();
-	writeGDTR(&gdtr);
-
-	__lidt(&idtr);
-
-	uint64 result = BudgetEPTTest(cs, ss, tr, virt.all);
-
-	__lidt(&oldIDTR);
-
-	UpdateSupervisorPrivileges();
-
-	__writecr3(oldCR3.all);
-	FlushCaches(reinterpret_cast<void*>(virt.all));
-
-	_enable();
-
-	DbgPrint("Result of call: 0x%llx\n", result);
-
-	FreeContiguousMemory(idt);
-	FreeContiguousMemory(gdt);
+	result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 1);
+	if (result == 0xdeadbeefcafedade)
+		DbgPrint("Budget EPT Test 2 Passed: 0x%llx\n", result);
+	else
+		DbgPrint("Budget EPT Test 2 Failed: 0x%llx\n", result);
+	
 	FreeContiguousMemory(entry);
 	FreeContiguousMemory(pt);
 	FreeContiguousMemory(pd);

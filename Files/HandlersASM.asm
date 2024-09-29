@@ -1,12 +1,7 @@
-externdef OldCS : word
-externdef OldSS : word
-externdef OldTR : word
+extern OldCS : word
+extern OldSS : word
+extern OldTR : word
 extern OldGDTR : fword
-
-.data
-	OldCS dw 0
-	OldSS dw 0
-	OldTR dw 0
 
 .code
 

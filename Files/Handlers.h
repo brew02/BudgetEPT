@@ -1,11 +1,11 @@
 #pragma once
 #include "CIA32.h"
 
-extern "C" SegmentSelector OldCS;
-extern "C" SegmentSelector OldSS;
-extern "C" SegmentSelector OldTR;
+extern "C" inline SegmentSelector OldCS{ 0 };
+extern "C" inline SegmentSelector OldSS{ 0 };
+extern "C" inline SegmentSelector OldTR{ 0 };
 
-extern "C" GDTR OldGDTR{ 0 };
+extern "C" inline GDTR OldGDTR{ 0 };
 
 extern "C" void GPHandler(void);
 extern "C" void PFHandler(void);

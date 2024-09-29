@@ -8,6 +8,12 @@
 #include "Memory.h"
 #include "x64.h"
 
+/*
+	TODO: Make a demo that shows
+	more of the potential of this
+	project.
+*/
+
 void UpdateSupervisorPrivileges()
 {
 	static bool smepRemoved = false;
@@ -284,7 +290,7 @@ NTSTATUS Startup(void* context)
 
 	VAddress virt{ 0 };
 
-	uint64 idx = 0;
+	int idx = 0;
 
 	PDPTE* pdpt = reinterpret_cast<PDPTE*>(
 		NewTableEntry(pml4, &idx, flags));
@@ -347,8 +353,8 @@ NTSTATUS Startup(void* context)
 
 	/*
 		mov eax, 0xdeadbeef
-		mov rcx, cr3
-		mov rax, [rip]
+		mov rcx, cr3			; #GP only on test 2
+		mov rax, [rip]			; #PF on both tests
 		ret
 	*/
 	uint8 shellcode[] = { 0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 0x0F, 0x20, 0xD9, 0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 0xC3 };

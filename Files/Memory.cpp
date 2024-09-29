@@ -45,7 +45,7 @@ void* PFNToVirt(uint64 pfn)
 	return PhysToVirt(pfn << 12);
 }
 
-void* NewTableEntry(void* currentTable, uint64* idx, uint64 flags)
+void* NewTableEntry(void* currentTable, int* idx, uint64 flags)
 {
 	void* newTable = AllocateContiguousMemory(PAGE_SIZE, PAGE_READWRITE);
 	if (!newTable)

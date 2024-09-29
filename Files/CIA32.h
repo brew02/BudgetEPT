@@ -307,6 +307,11 @@ union CR4
 #define TABLE_FLAG_USERMODE BIT_FLAG(2)
 #define TABLE_FLAG_NX		BIT_FLAG(63)
 
+#define TABLE_LEVEL_PML4 4
+#define TABLE_LEVEL_PDPT 3
+#define TABLE_LEVEL_PD 2
+#define TABLE_LEVEL_PT 1
+
 union PML4E
 {
 	uint64 all;

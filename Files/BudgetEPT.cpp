@@ -9,9 +9,13 @@
 #include "x64.h"
 
 /*
-	TODO: Make a demo that shows
-	more of the potential of this
-	project.
+	Add comment docs.
+	
+	Notes:
+	stac/clac
+	popfq (disassembler needed)
+	mov crx
+	Handling user-mode memory
 */
 
 void UpdateSupervisorPrivileges()
@@ -357,7 +361,13 @@ NTSTATUS Startup(void* context)
 		mov rax, [rip]			; #PF on both tests
 		ret
 	*/
-	uint8 shellcode[] = { 0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 0x0F, 0x20, 0xD9, 0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 0xC3 };
+	uint8 shellcode[] = 
+	{ 
+		0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 
+		0x0F, 0x20, 0xD9, 
+		0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 
+		0xC3 
+	};
 
 	memcpy(entry, shellcode, sizeof(shellcode));
 

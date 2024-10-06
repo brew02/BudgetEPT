@@ -1,3 +1,7 @@
+extern ptEntry : qword
+extern hookPFN : qword
+extern originalPFN : qword
+
 extern OldCS : word
 extern OldSS : word
 extern OldTR : word
@@ -33,6 +37,21 @@ extern OldGDTR : fword
 		mov ax, OldTR
 		ltr ax								; Restore TR value
 
+		push rdx
+
+											; Swap PFN back to "hooked" page
+		mov rax, ptEntry
+		mov rcx, hookPFN
+		mov rdx, 0FFFFFFFFFh
+		shl rdx, 12
+		not rdx
+		and [rax], rdx
+		shl rcx, 12
+		or [rax], rcx
+
+		invlpg [rsp + 18h]
+
+		pop rdx
 		pop rcx
 		pop rax
 
@@ -59,6 +78,26 @@ extern OldGDTR : fword
 		bts qword ptr [rsp + 10h], 18		; Set access check
 		bts qword ptr [rsp + 10h], 8		; Set trap flag
 		btr qword ptr [rsp + 10h], 16		; Reset resume flag
+
+		push rax
+		push rcx
+		push rdx
+
+											; Swap PFN to "original" page
+		mov rax, ptEntry
+		mov rcx, originalPFN
+		mov rdx, 0FFFFFFFFFh
+		shl rdx, 12
+		not rdx
+		and [rax], rdx
+		shl rcx, 12
+		or [rax], rcx
+
+		invlpg [rsp + 18h]
+
+		pop rdx
+		pop rcx
+		pop rax
 
 		shl rax, 16
 		mov ax, 0dadeh						; For demo purposes

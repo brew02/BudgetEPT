@@ -10,7 +10,6 @@
 
 /*
 	Add comment docs.
-	Add hook switching
 */
 
 void UpdateSupervisorPrivileges()
@@ -252,10 +251,14 @@ uint64 RunBudgetEPTTest(CR3* cr3, void* shellAddress, uint64 pl)
 	return result;
 }
 
+extern "C" PTE* ptEntry = nullptr;
+extern "C" uint64 originalPFN = 0;
+extern "C" uint64 hookPFN = 0;
+
 NTSTATUS Startup(void* context)
 {
 	UNREFERENCED_PARAMETER(context);
-	
+
 	uint64 flags = (TABLE_FLAG_READ | TABLE_FLAG_WRITE | TABLE_FLAG_USERMODE);
 
 	/*
@@ -341,48 +344,100 @@ NTSTATUS Startup(void* context)
 
 	virt.pd = idx;
 
-	void* entry = NewTableEntry(pt, &idx, flags);
-	if (!entry)
+	void* hookedEntry = NewTableEntry(pt, &idx, flags);
+	if (!hookedEntry)
 	{
 		FreeContiguousMemory(pt);
 		FreeContiguousMemory(pd);
 		FreeContiguousMemory(pdpt);
 		FreeContiguousMemory(pml4);
-		DbgPrint("Failed to allocate new entry\n");
+		DbgPrint("Failed to allocate hook entry\n");
 		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
 	}
 
 	virt.pt = idx;
 
+	ptEntry = &pt[idx];
+	hookPFN = VirtToPFN(hookedEntry);
+
+	void* originalEntry = AllocateContiguousMemory(PAGE_SIZE, PAGE_READWRITE);
+	if (!originalEntry)
+	{
+		FreeContiguousMemory(hookedEntry);
+		FreeContiguousMemory(pt);
+		FreeContiguousMemory(pd);
+		FreeContiguousMemory(pdpt);
+		FreeContiguousMemory(pml4);
+		DbgPrint("Failed to allocate original entry\n");
+		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
+	}
+
+	originalPFN = VirtToPFN(originalEntry);
+
 	/*
 		mov eax, 0xdeadbeef
-		mov rcx, cr3			; #GP only on test 2
-		mov rcx, [rip]			; #PF on both tests
+		mov rcx, cr3							; #GP only on test 2
+		mov ecx, dword ptr [rip - 13]			; #PF on both tests
+		cmp ecx, 0xcafefeed
+		jz ExitShellcode
+		xor rax, rax
+	ExitShellcode:
 		ret
 	*/
-	uint8 shellcode[] = 
-	{ 
+	uint8 hookedShellcode[] =
+	{
 		0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 
 		0x0F, 0x20, 0xD9, 
-		0x48, 0x8B, 0x0D, 0x00, 0x00, 0x00, 0x00, 
-		0xC3 
+		0x8B, 0x0D, 0xF3, 0xFF, 0xFF, 0xFF, 
+		0x81, 0xF9, 0xED, 0xFE, 0xFE, 0xCA, 
+		0x74, 0x03, 
+		0x48, 0x31, 0xC0, 
+		0xC3
 	};
 
-	memcpy(entry, shellcode, sizeof(shellcode));
+	/*
+		mov eax, 0xcafefeed
+		mov rcx, cr3
+		mov ecx, dword ptr [rip - 13]
+		cmp ecx, 0xcafefeed
+		jz ExitShellcode
+		xor rax, rax
+	ExitShellcode:
+		ret
+	*/
+	uint8 originalShellcode[] =
+	{
+		0xB8, 0xED, 0xFE, 0xFE, 0xCA,
+		0x0F, 0x20, 0xD9,
+		0x8B, 0x0D, 0xF3, 0xFF, 0xFF, 0xFF,
+		0x81, 0xF9, 0xED, 0xFE, 0xFE, 0xCA,
+		0x74, 0x03,
+		0x48, 0x31, 0xC0,
+		0xC3
+	};
+
+	memcpy(hookedEntry, hookedShellcode, sizeof(hookedShellcode));
+	memcpy(originalEntry, originalShellcode, sizeof(originalShellcode));
+
+	_disable();
+	while (true) { _mm_pause(); }
+	_enable();
 
 	uint64 result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 0);
-	if (result == 0xdeadbeefdadefeed)
-		DbgPrint("Budget EPT Test 1 Passed: 0x%llx\n", result);
+	if (!result)
+		DbgPrint("Budget EPT Test 2 Failed\n");
 	else
-		DbgPrint("Budget EPT Test 1 Failed: 0x%llx\n", result);
+		DbgPrint("Budget EPT Test 2 Passed: 0x%llx\n", result);
 
 	result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 1);
-	if (result == 0xbeefcafedadefeed)
-		DbgPrint("Budget EPT Test 2 Passed: 0x%llx\n", result);
+	if(!result)
+		DbgPrint("Budget EPT Test 2 Failed\n");
 	else
-		DbgPrint("Budget EPT Test 2 Failed: 0x%llx\n", result);
+		DbgPrint("Budget EPT Test 2 Passed: 0x%llx\n", result);
+		
 	
-	FreeContiguousMemory(entry);
+	FreeContiguousMemory(originalEntry);
+	FreeContiguousMemory(hookedEntry);
 	FreeContiguousMemory(pt);
 	FreeContiguousMemory(pd);
 	FreeContiguousMemory(pdpt);

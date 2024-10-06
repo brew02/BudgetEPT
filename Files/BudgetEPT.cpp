@@ -9,9 +9,7 @@
 #include "x64.h"
 
 /*
-	Updates the supervisor privileges
-	by toggling the bits in the CR4 and
-	RFLAG registers.
+	Updates the supervisor privileges by toggling bits in the CR4 and RFLAG registers.
 */
 void UpdateSupervisorPrivileges()
 {

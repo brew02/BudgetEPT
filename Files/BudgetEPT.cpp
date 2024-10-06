@@ -9,9 +9,10 @@
 #include "x64.h"
 
 /*
-	Add comment docs.
+	Updates the supervisor privileges
+	by toggling the bits in the CR4 and
+	RFLAG registers.
 */
-
 void UpdateSupervisorPrivileges()
 {
 	static bool smepRemoved = false;
@@ -69,6 +70,17 @@ void UpdateSupervisorPrivileges()
 	writeRFlags(rflags);
 }
 
+/*
+	Creates a GDT copy with a new privilege level entry.
+
+	@param gdtr - The original GDTR as input, new GDTR as output
+	@param cs - The output CS value
+	@param ss - The output SS value
+	@param tr - The output TR value
+	@param pl - The privilege value for the GDT entry
+
+	@return The new GDT's virtual address
+*/
 void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSelector* tr, uint64 pl)
 {
 	readGDTR(gdtr);
@@ -158,6 +170,13 @@ void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSel
 	return gdt;
 }
 
+/*
+	Creates an IDT copy with certain modified interrupt handlers.
+
+	@param idtr - The original IDTR as input, new IDTR as output
+
+	@return The new IDT's virtual address
+*/
 void* CreateIDT(IDTR* idtr)
 {
 	__sidt(idtr);
@@ -196,6 +215,15 @@ void* CreateIDT(IDTR* idtr)
 	return idt;
 }
 
+/*
+	Runs a budget EPT test with a CR3 value, shellcode address, and privilege level.
+
+	@param cr3 - The CR3 value to use for the budget EPT test.
+	@param shellAddress - The shellcode address to execute.
+	@param pl - The privilege value for the GDT entry
+
+	@return The result of running the budget EPT test
+*/
 uint64 RunBudgetEPTTest(CR3* cr3, void* shellAddress, uint64 pl)
 {
 	CR3 oldCR3{ __readcr3() };
@@ -255,6 +283,13 @@ extern "C" PTE* ptEntry = nullptr;
 extern "C" uint64 originalPFN = 0;
 extern "C" uint64 hookPFN = 0;
 
+/*
+	The main code of the program.
+
+	@param context - The starting context
+
+	@return An NTSTATUS value
+*/
 NTSTATUS Startup(void* context)
 {
 	UNREFERENCED_PARAMETER(context);
@@ -442,6 +477,14 @@ NTSTATUS Startup(void* context)
 	return PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
+/*
+	The initial entry point.
+
+	@param DriverObject - The driver object
+	@param RegistryPath - The registry path
+
+	@return An NTSTATUS value
+*/
 NTSTATUS DriverEntry(DRIVER_OBJECT* DriverObject, UNICODE_STRING* RegistryPath)
 {
 	UNREFERENCED_PARAMETER(DriverObject);

@@ -419,10 +419,6 @@ NTSTATUS Startup(void* context)
 	memcpy(hookedEntry, hookedShellcode, sizeof(hookedShellcode));
 	memcpy(originalEntry, originalShellcode, sizeof(originalShellcode));
 
-	_disable();
-	while (true) { _mm_pause(); }
-	_enable();
-
 	uint64 result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 0);
 	if (!result)
 		DbgPrint("Budget EPT Test 2 Failed\n");

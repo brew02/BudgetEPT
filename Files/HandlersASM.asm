@@ -5,21 +5,12 @@ extern OldGDTR : fword
 
 .code
 
-	GPHandler proc
+	DBHandler proc
 
-		add rsp, 8h
-		add qword ptr [rsp], 3h
-		shl rax, 16
-		mov ax, 0cafeh						; For demo purposes
-		iretq
-
-	GPHandler endp
-
-	PFHandler proc
-
-		add rsp, 8h
-		add qword ptr [rsp], 7h
-
+		btr qword ptr [rsp + 10h], 18		; Reset access check
+		btr qword ptr [rsp + 10h], 8		; Reset trap flag
+											
+											; Just restoring stuff for the demo
 		push rax
 		push rcx
 
@@ -44,6 +35,30 @@ extern OldGDTR : fword
 
 		pop rcx
 		pop rax
+
+		shl rax, 16
+		mov ax, 0feedh						; For demo purposes
+
+		iretq
+
+	DBHandler endp
+
+	GPHandler proc
+
+		add rsp, 8h
+		add qword ptr [rsp], 3h				; Skip instruction (mov rcx, cr3)
+		shl rax, 16
+		mov ax, 0cafeh						; For demo purposes
+		iretq
+
+	GPHandler endp
+
+	PFHandler proc
+
+		add rsp, 8h
+		bts qword ptr [rsp + 10h], 18		; Set access check
+		bts qword ptr [rsp + 10h], 8		; Set trap flag
+		btr qword ptr [rsp + 10h], 16		; Reset resume flag
 
 		shl rax, 16
 		mov ax, 0dadeh						; For demo purposes

@@ -14,6 +14,8 @@
 
 		pushfq
 
+		btr qword ptr [rsp], 18
+
 		movzx rcx, cx
 		push rcx
 

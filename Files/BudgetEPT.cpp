@@ -10,12 +10,7 @@
 
 /*
 	Add comment docs.
-	
-	Notes:
-	stac/clac
-	popfq (disassembler needed)
-	mov crx
-	Handling user-mode memory
+	Add hook switching
 */
 
 void UpdateSupervisorPrivileges()
@@ -184,6 +179,10 @@ void* CreateIDT(IDTR* idtr)
 	}
 
 	memcpy(idt, reinterpret_cast<void*>(idtr->base), static_cast<size_t>(idtr->limit) + 1);
+
+	idt[INTERRUPT_VECTOR_DB].baseLow = (reinterpret_cast<uint64>(DBHandler) & MAXUINT16);
+	idt[INTERRUPT_VECTOR_DB].baseMiddle = ((reinterpret_cast<uint64>(DBHandler) >> 16) & MAXUINT16);
+	idt[INTERRUPT_VECTOR_DB].baseHigh = ((reinterpret_cast<uint64>(DBHandler) >> 32) & MAXUINT32);
 
 	idt[INTERRUPT_VECTOR_GP].baseLow = (reinterpret_cast<uint64>(GPHandler) & MAXUINT16);
 	idt[INTERRUPT_VECTOR_GP].baseMiddle = ((reinterpret_cast<uint64>(GPHandler) >> 16) & MAXUINT16);
@@ -358,27 +357,27 @@ NTSTATUS Startup(void* context)
 	/*
 		mov eax, 0xdeadbeef
 		mov rcx, cr3			; #GP only on test 2
-		mov rax, [rip]			; #PF on both tests
+		mov rcx, [rip]			; #PF on both tests
 		ret
 	*/
 	uint8 shellcode[] = 
 	{ 
 		0xB8, 0xEF, 0xBE, 0xAD, 0xDE, 
 		0x0F, 0x20, 0xD9, 
-		0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 
+		0x48, 0x8B, 0x0D, 0x00, 0x00, 0x00, 0x00, 
 		0xC3 
 	};
 
 	memcpy(entry, shellcode, sizeof(shellcode));
 
 	uint64 result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 0);
-	if (result == 0xdeadbeefdade)
+	if (result == 0xdeadbeefdadefeed)
 		DbgPrint("Budget EPT Test 1 Passed: 0x%llx\n", result);
 	else
 		DbgPrint("Budget EPT Test 1 Failed: 0x%llx\n", result);
 
 	result = RunBudgetEPTTest(&cr3, reinterpret_cast<void*>(virt.all), 1);
-	if (result == 0xdeadbeefcafedade)
+	if (result == 0xbeefcafedadefeed)
 		DbgPrint("Budget EPT Test 2 Passed: 0x%llx\n", result);
 	else
 		DbgPrint("Budget EPT Test 2 Failed: 0x%llx\n", result);

@@ -7,5 +7,6 @@ extern "C" inline SegmentSelector OldTR{ 0 };
 
 extern "C" inline GDTR OldGDTR{ 0 };
 
+extern "C" void DBHandler(void);
 extern "C" void GPHandler(void);
 extern "C" void PFHandler(void);

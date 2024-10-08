@@ -8,6 +8,25 @@
 #include "Memory.h"
 #include "x64.h"
 
+bool SupportsSMEPSMAP()
+{
+	CPUID cpuid{ 0 };
+	__cpuid(cpuid.all, 7);
+
+	if (!cpuid.EAX07hECX0h.EBX.smep)
+	{
+		DbgPrint("SMEP is not supported on this processor!\n");
+	}
+
+	if (!cpuid.EAX07hECX0h.EBX.smap)
+	{
+		DbgPrint("SMAP is not supported on this processor!\n");
+		return false;
+	}
+
+	return true;
+}
+
 /*
 	Updates the supervisor privileges by toggling bits in the CR4 and RFLAG registers.
 */
@@ -65,7 +84,7 @@ void UpdateSupervisorPrivileges()
 	}
 
 	__writecr4(cr4.all);
-	writeRFlags(rflags);
+	WriteRFlags(rflags);
 }
 
 /*
@@ -81,7 +100,7 @@ void UpdateSupervisorPrivileges()
 */
 void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSelector* tr, uint64 pl)
 {
-	readGDTR(gdtr);
+	ReadGDTR(gdtr);
 	OldGDTR = *gdtr;
 
 	if (!gdtr->base)
@@ -110,7 +129,7 @@ void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSel
 
 	uint64 idx = (static_cast<uint64>(gdtr->limit) + 1) / sizeof(SegmentDescriptor32);
 
-	*cs = OldCS = readCS();
+	*cs = OldCS = ReadCS();
 	SegmentDescriptor32* csEntry = &gdt[--idx];
 	if (csEntry->all)
 	{
@@ -130,7 +149,7 @@ void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSel
 	cs->index = idx;
 	cs->rpl = pl;
 
-	*ss = OldSS = readSS();
+	*ss = OldSS = ReadSS();
 	SegmentDescriptor32* ssEntry = &gdt[--idx];
 	if (ssEntry->all)
 	{
@@ -146,7 +165,7 @@ void* CreateGDT(GDTR* gdtr, SegmentSelector* cs, SegmentSelector* ss, SegmentSel
 	ss->index = idx;
 	ss->rpl = pl;
 
-	*tr = OldTR = readTR();
+	*tr = OldTR = ReadTR();
 	idx -= 2;
 	SegmentDescriptor64* trEntry = reinterpret_cast<SegmentDescriptor64*>(&gdt[idx]);
 	if (trEntry->all[0] || trEntry->all[1])
@@ -256,7 +275,7 @@ uint64 RunBudgetEPTTest(CR3* cr3, void* shellAddress, uint64 pl)
 
 	FlushCaches(shellAddress);
 	UpdateSupervisorPrivileges();
-	writeGDTR(&gdtr);
+	WriteGDTR(&gdtr);
 
 	__lidt(&idtr);
 
@@ -291,6 +310,14 @@ extern "C" uint64 hookPFN = 0;
 NTSTATUS Startup(void* context)
 {
 	UNREFERENCED_PARAMETER(context);
+
+	if (!SupportsSMEPSMAP())
+	{
+		DbgPrint("Unsupported processor features, unable to continue\n");
+		return PsTerminateSystemThread(STATUS_UNSUCCESSFUL);
+	}
+
+	DbgPrint("All processor features supported\n");
 
 	uint64 flags = (TABLE_FLAG_READ | TABLE_FLAG_WRITE | TABLE_FLAG_USERMODE);
 

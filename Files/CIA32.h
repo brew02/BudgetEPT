@@ -464,6 +464,42 @@ union VAddress
 	};
 };
 
+/*
+	CPUID
+*/
+
+union CPUID
+{
+	__int32 all[4];
+	struct
+	{
+		struct
+		{
+			__int32 all;
+		} EAX;
+
+		struct
+		{
+			__int32 pad1 : 7;
+			__int32 smep : 1;
+			__int32 pad2 : 12;
+			__int32 smap : 1;
+			__int32 pad3 : 11;
+		} EBX;
+
+		struct 
+		{
+			__int32 all;
+		} ECX;
+
+		struct
+		{
+			__int32 all;
+		} EDX;
+
+	} EAX07hECX0h;
+};
+
 #if defined(_MSC_EXTENSIONS)
 #pragma warning(pop)
 #endif

@@ -13,39 +13,39 @@
 
 	@param rflags - The updated RFLAG value
 */
-extern "C" void writeRFlags(RFlags rflags);
+extern "C" void WriteRFlags(RFlags rflags);
 
 /*
 	Reads the GDTR value.
 
 	@param gdtr - A variable to recieve the GDTR value
 */
-extern "C" void readGDTR(GDTR* gdtr);
+extern "C" void ReadGDTR(GDTR* gdtr);
 
 /*
 	Writes the GDTR value.
 
 	@param gdtr - A variable to write the GDTR value
 */
-extern "C" void writeGDTR(GDTR* gdtr);
+extern "C" void WriteGDTR(GDTR* gdtr);
 
 /*
 	Reads the CS value.
 
 	@return The CS value
 */
-extern "C" SegmentSelector readCS(void);
+extern "C" SegmentSelector ReadCS(void);
 
 /*
 	Reads the SS value.
 
 	@return The SS value
 */
-extern "C" SegmentSelector readSS(void);
+extern "C" SegmentSelector ReadSS(void);
 
 /*
 	Reads the TR value.
 
 	@return The TR value
 */
-extern "C" SegmentSelector readTR(void);
+extern "C" SegmentSelector ReadTR(void);

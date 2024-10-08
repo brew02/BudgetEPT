@@ -1,49 +1,49 @@
 .code
 
-	writeRFlags proc
+	WriteRFlags proc
 
 		push rcx
 		popfq
 		ret
 
-	writeRFlags endp
+	WriteRFlags endp
 
-	readGDTR proc
+	ReadGDTR proc
 
 		sgdt [rcx]
 		ret
 
-	readGDTR endp
+	ReadGDTR endp
 
-	writeGDTR proc
+	WriteGDTR proc
 
 		lgdt fword ptr [rcx]
 		ret
 
-	writeGDTR endp
+	WriteGDTR endp
 
-	readCS proc
+	ReadCS proc
 
 		xor rax, rax
 		mov ax, cs
 		ret
 
-	readCS endp
+	ReadCS endp
 
-	readSS proc
+	ReadSS proc
 
 		xor rax, rax
 		mov ax, ss
 		ret
 
-	readSS endp
+	ReadSS endp
 
-	readTR proc
+	ReadTR proc
 
 		xor rax, rax
 		str ax
 		ret
 
-	readTR endp
+	ReadTR endp
 
 end

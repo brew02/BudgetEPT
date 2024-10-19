@@ -8,6 +8,11 @@
 #include "Memory.h"
 #include "x64.h"
 
+/*
+	Checks if SMEP and SMAP are supported.
+
+	@return True if SMAP and SMEP are supported, false otherwise
+*/
 bool SupportsSMEPSMAP()
 {
 	CPUID cpuid{ 0 };
